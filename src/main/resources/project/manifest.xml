@@ -1,0 +1,39 @@
+<?xml version='1.0' standalone='yes'?>
+<fileset>
+  <file>
+    <path>ec_setup.pl</path>
+    <xpath>//property[propertyName=&quot;ec_setup&quot;]/value</xpath>
+  </file>
+  <file>
+    <path>promoteHook.pl</path>
+    <xpath>//property[propertyName=&quot;scripts&quot;]//property[propertyName=&quot;promoteHook&quot;]/value</xpath>
+  </file>
+  <file>
+    <path>lib/apply.pm</path>
+    <xpath>//property[propertyName=&quot;scripts&quot;]//property[propertyName=&quot;apply.pm&quot;]/value</xpath>
+  </file>
+  <file>
+    <path>lib/cleanup.pm</path>
+    <xpath>//property[propertyName=&quot;scripts&quot;]//property[propertyName=&quot;cleanup.pm&quot;]/value</xpath>
+  </file>
+  <file>
+    <path>lib/factory.pm</path>
+    <xpath>//property[propertyName=&quot;scripts&quot;]//property[propertyName=&quot;factory.pm&quot;]/value</xpath>
+  </file>
+  <file>
+    <path>lib/policy.pm</path>
+    <xpath>//property[propertyName=&quot;scripts&quot;]//property[propertyName=&quot;policy.pm&quot;]/value</xpath>
+  </file>
+  <file>
+    <path>basicPolicy.json</path>
+    <xpath>//property[propertyName=&quot;ECPolicies&quot;]//property[propertyName=&quot;basic&quot;]/value</xpath>
+  </file>
+  <file>
+    <path>initialPolicy.json</path>
+    <xpath>//property[propertyName=&quot;ECPolicies&quot;]//property[propertyName=&quot;initial&quot;]/value</xpath>
+  </file>
+  <file>
+    <path>teamPolicy.json</path>
+    <xpath>//property[propertyName=&quot;ECPolicies&quot;]//property[propertyName=&quot;sampleTeam&quot;]/value</xpath>
+  </file>
+</fileset>
