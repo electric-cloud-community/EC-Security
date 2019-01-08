@@ -1,0 +1,56 @@
+{
+    "managedGroups" : [ "EC-Admins", "EC-Designers", "Everyone" ],
+    "systemObject" : [
+        { "name" : "server",
+            "acl" : [
+                { "group": "Everyone",
+                    "access": ["allow", "inherit", "allow", "inherit" ] } ] },
+        { "name" : "admin", "acl" : [ ] },
+        { "name" : "artifacts",
+              "acl" : [
+                  { "group": "Everyone",
+                    "access": ["allow", "allow", "inherit", "inherit" ] } ] },
+        { "name" : "directory", "acl" : [ ] },
+        { "name" : "emailConfigs", "acl" : [ ] },
+        { "name" : "forceAbort",
+            "acl" : [
+                { "group" : "Everyone",
+                    "access" : [ "inherit", "inherit", "allow", "inherit" ] } ] },
+        { "name" : "log", "acl" : [ ] },
+        { "name" : "licensing", "acl" : [ ] },
+        { "name" : "plugins",
+            "acl" : [
+                { "group" : "Everyone",
+                    "access" : [ "allow", "inherit", "inherit", "inherit" ] } ] },
+        { "name" : "priority", "acl" : [ ] },
+        { "name" : "projects", "acl" : [ ] },
+        { "name" : "repositories", "acl" : [ ] },
+        { "name" : "resources", "acl" : [ ] },
+        { "name" : "session", "acl" : [ ] },
+        { "name" : "test", "acl" : [ ] },
+        { "name" : "workspaces", "acl" : [ ] },
+        { "name" : "zonesAndGateways", "acl" : [ ] }
+    ],
+    "propertySheet" : [
+        { "path" : "/server/propertySheet",
+            "acl" : [
+                { "group" : "Everyone",
+                    "access" : [ "allow", "inherit", "inherit", "inherit" ] } ] } ],
+    "project" : [
+        { "pattern" : "EC-Utilities",
+            "acl" : [
+                { "group" : "Everyone",
+                    "access" : [ "allow", "inherit", "inherit", "inherit" ] } ] } ],
+    "plugin" : [
+        { "pattern" : ".*",
+            "acl" : [
+                { "group" : "Everyone",
+                    "access" : [ "allow", "inherit", "inherit", "inherit" ] } ] } ],
+    "artifact" : [ ],
+    "emailConfig" : [ ],
+    "gateway" : [ ],
+    "repository" : [ ],
+    "resource" : [ ],
+    "workspace" : [ ],
+    "zone" : [ ]
+}

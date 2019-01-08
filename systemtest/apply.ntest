@@ -1,0 +1,140 @@
+# -*-Perl-*-
+
+# apply.ntest -
+#
+# Exercise the apply module
+#
+# Copyright (c) 2005-2012 Electric Cloud, Inc.
+# All rights reserved
+
+use strict;
+use warnings;
+use ECTest;
+use JSON;
+use securityTest;
+use Data::Dumper;
+use ElectricCommander::Util;
+
+initCommander();
+checkServerVersion();
+
+my $N = $adminSession;
+my $xpath;
+
+my $licenseFile = "../build/license.xml";
+die "Cannot find license.xml in $licenseFile" unless -f $licenseFile;
+my $license = `cat "$licenseFile"`;
+
+my $initialPolicy = '/plugins/EC-Security/project/ECPolicies/initial';
+my $basicPolicy = '/plugins/EC-Security/project/ECPolicies/basic';
+my $testPolicy = '/plugins/EC-Security/project/CustomPolicies/test';
+my $currentPolicy = '/plugins/EC-Security/project/currentPolicy';
+
+#-------------------------------------------------------------------------
+# Verify that only the 'admin' user is allowed to change policies
+#-------------------------------------------------------------------------
+ntest "changePolicy_adminOnly", {}, sub {
+    applyPolicy($basicPolicy);
+    assertOK($N->deleteGroup('EC-Admins'));
+    assertOK($N->createGroup('EC-Admins', {userName => 'guest'}));
+    assertDef($guestSession,"guest session exists");
+    my $log = applyPolicy($basicPolicy, 'error', $guestSession);
+    assertSubstring("Only user 'admin' is allowed to change security policies", $log, "admin is required");
+};
+
+#-------------------------------------------------------------------------
+# Test a policy with no changes
+#-------------------------------------------------------------------------
+ntest "changePolicy_nochange", {}, sub {
+    assertOK($N->setProperty($testPolicy, q{{}}));
+    my $log = applyPolicy($testPolicy);
+    assertSubstring("No changes requested", $log);
+};
+
+#-------------------------------------------------------------------------
+# Verify applyToPlugin is called and correctly applies a custom plugin
+# policy to a newly promoted plugin
+#-------------------------------------------------------------------------
+
+ntest "applyToPlugin", {}, sub {
+    assertOK($N->setProperty($testPolicy, qq{
+{
+    "plugin" : [
+        { "pattern" : "$::gTest", "acl" : [
+            { "group" : "foobar",
+              "access" : [ "allow", "inherit", "inherit", "inherit" ]}]}]
+}
+}));
+    applyPolicy($testPolicy);
+    assertOK($N->deleteProject($::gTest));
+    assertOK($N->createProject($::gTest));
+    assertOK($N->createPlugin($::gTest, '1.0', $::gTest));
+    assertOK($xpath = $N->promotePlugin($::gTest.'-1.0'));
+    assertOK($N->waitForJob($xpath->findvalue('//jobId')->string_value));
+
+    assertAcl('foobar', {projectName => "/plugins/$::gTest/project" },
+              ['allow', 'inherit', 'inherit', 'inherit']);
+};
+
+ntest "applyToPlugin_noPolicy", {}, sub {
+    assertOK($N->deleteProperty($currentPolicy));
+    assertOK($N->deleteProject($::gTest));
+    assertOK($N->createProject($::gTest));
+    assertOK($N->createPlugin($::gTest, '1.0', $::gTest));
+    assertOK($xpath = $N->promotePlugin($::gTest.'-1.0'));
+    assertEq('', $xpath->findvalue('//jobId')->string_value, "no job");
+};
+
+ntest "applyToPlugin_noLicense", {}, sub {
+    assertOK($N->setProperty($testPolicy, qq{
+{
+    "plugin" : [
+        { "pattern" : "$::gTest", "acl" : [
+            { "group" : "foobar",
+              "access" : [ "allow", "inherit", "inherit", "inherit" ]}]}]
+}
+}));
+    applyPolicy($testPolicy);
+    assertOK($N->deleteProject($::gTest));
+    assertOK($N->createProject($::gTest));
+    assertOK($N->createPlugin($::gTest, '1.0', $::gTest));
+    assertOK($N->deleteLicense('ElectricCommander', 'Server'));
+    assertOK($xpath = $N->promotePlugin($::gTest.'-1.0'));
+    assertEq('', $xpath->findvalue('//jobId')->string_value, "no job");
+};
+
+# Restore the server license
+$N->importLicenseData($license);
+
+sub applyPluginPolicy
+{
+    my ($expectedOutcome, $session) = @_;
+    $session ||= $adminSession;
+
+    my $actuals = [ ];
+    return securityTest::runProc($session, 'ApplyPolicyToAllPlugins',
+                                 'ApplyPolicy',
+                                 $actuals, $expectedOutcome);
+}
+
+
+#-------------------------------------------------------------------------
+# Verify that we do nothing if no current policy is set.
+#-------------------------------------------------------------------------
+ntest "changePolicyForAllPlugins_noPolicy", {}, sub {
+    assertOK($N->setProperty($currentPolicy, q{}));
+    my $log = applyPluginPolicy("success", $adminSession);
+    assertSubstring("No security policy to apply.", $log);
+};
+
+#-------------------------------------------------------------------------
+# Verify that only the 'admin' user is allowed to change policies
+#-------------------------------------------------------------------------
+ntest "changePolicyForAllPlugins_adminOnly", {}, sub {
+    applyPolicy($basicPolicy); # This will set currentPolicy again
+    assertOK($N->deleteGroup('EC-Admins'));
+    assertOK($N->createGroup('EC-Admins', {userName => 'guest'}));
+    assertDef($guestSession, "guest session exists");
+    my $log = applyPluginPolicy('error', $guestSession);
+    assertSubstring("Only user 'admin' is allowed to change security policies", $log, "admin is required");
+};

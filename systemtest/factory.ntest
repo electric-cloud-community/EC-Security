@@ -1,0 +1,172 @@
+# -*-Perl-*-
+
+# factory.ntest -
+#
+# Exercise the factory module
+#
+# Copyright (c) 2005-2010 Electric Cloud, Inc.
+# All rights reserved
+
+use strict;
+use warnings;
+use ECTest;
+use JSON;
+use securityTest;
+use Data::Dumper;
+
+initCommander();
+
+my $N = $adminSession;
+my $xpath;
+
+my $initialPolicy = '/plugins/EC-Security/project/ECPolicies/initial';
+my $basicPolicy = '/plugins/EC-Security/project/ECPolicies/basic';
+my $testPolicy = '/plugins/EC-Security/project/CustomPolicies/test';
+
+#-------------------------------------------------------------------------
+# Handle bad object type errors
+#-------------------------------------------------------------------------
+
+ntest "factory_bad_type", {}, sub {
+    assertOK($N->setProperty('/plugins/EC-Security/project/currentPolicy',
+                             $basicPolicy));
+    my $log = createObject($::gTest, 'foobar', 'T1', 'error');
+    assertSubstring("Unexpected object type.  Must be one of: artifact, project, resource, workspace", $log);
+};
+
+#-------------------------------------------------------------------------
+# Handle the case where no policy has been applied yet
+#-------------------------------------------------------------------------
+
+ntest "factory_no_current_policy", {}, sub {
+    assertOK($N->deleteProperty('/plugins/EC-Security/project/currentPolicy'));
+    my $log = createObject($::gTest, 'project', 'T1', 'error');
+    assertSubstring("No security policy is currently in effect for this system.  Use the ApplyPolicy procedure as user 'admin' to establish a security policy.", $log);
+};
+
+#-------------------------------------------------------------------------
+# Verify users in an admin group are able to create objects without
+# being a member of a team.
+#-------------------------------------------------------------------------
+
+ntest "factory_adminGroup", {knownBug => 'ECPSECURITY-18'}, sub {
+    assertOK($N->deleteProject($::gTest));
+    assertOK($N->deleteResource($::gTest));
+    assertOK($N->deleteGroup('T1-A'));
+    assertOK($N->deleteGroup('EC-Admin'));
+    assertOK($N->createGroup('EC-Admin', { userName => 'guest'}));
+
+    assertOK($N->setProperty($testPolicy, qq{
+{
+  "teams" : {
+    "T1" : {
+      "roles" : { "roleA" : { "group" : "T1-A", "create" : ["project"] } } }
+  },
+  "systemObject" : [
+    { "name" : "projects",
+      "acl" : [
+        { "group" : "EC-Admin",
+          "access" : [ "allow", "allow", "inherit", "inherit" ] } ] },
+    { "name" : "resources",
+      "acl" : [
+        { "group" : "EC-Admin",
+          "access" : [ "deny", "deny", "inherit", "inherit" ] } ] } ],
+  "project" : [
+    { "pattern" : "$::gTest",
+      "acl" : [
+        { "role" : "roleA",
+          "access" : [ "allow", "inherit", "inherit", "inherit" ] } ] } ]
+}
+}));
+    applyPolicy($testPolicy);
+    createObject($::gTest, 'project', 'T1');
+    assertOK($N->getProject($::gTest));
+    assertAcl('T1-A', { projectName => $::gTest },
+              [ "allow", "inherit", "inherit", "inherit" ]);
+
+    assertOK($xpath = $N->getProperty($testPolicy));
+    my $policy = decode_json($xpath->findvalue('//value')->string_value);
+    my %projects = map { $_,1} @{$policy->{teams}->{T1}->{project}};
+    assertTrue(exists $projects{$::gTest}, "project associated with team");
+
+    my $log = createObject($::gTest, 'resource', 'T1', 'error');
+    assertSubstring('foobar', $log);
+};
+
+#-------------------------------------------------------------------------
+# Verify the 'admin' user is able to create objects without
+# being a member of a team.
+#-------------------------------------------------------------------------
+
+ntest "factory_adminUser", {}, sub {
+    assertOK($N->deleteProject($::gTest));
+    assertOK($N->deleteResource($::gTest));
+    assertOK($N->deleteGroup('T1-A'));
+
+    assertOK($N->setProperty($testPolicy, qq{
+{
+  "teams" : {
+    "T1" : {
+      "roles" : { "roleA" : { "group" : "T1-A", "create" : ["project"] } } }
+  },
+  "systemObject" : [
+    { "name" : "projects",
+      "acl" : [
+        { "group" : "EC-Admin",
+          "access" : [ "allow", "allow", "inherit", "inherit" ] } ] },
+    { "name" : "resources",
+      "acl" : [
+        { "group" : "EC-Admin",
+          "access" : [ "deny", "deny", "inherit", "inherit" ] } ] } ],
+  "project" : [
+    { "pattern" : "$::gTest",
+      "acl" : [
+        { "role" : "roleA",
+          "access" : [ "allow", "inherit", "inherit", "inherit" ] } ] } ]
+}
+}));
+    applyPolicy($testPolicy);
+    createObject($::gTest, 'project', 'T1','success',$adminSession);
+    assertOK($N->getProject($::gTest));
+    assertAcl('T1-A', { projectName => $::gTest },
+              [ "allow", "inherit", "inherit", "inherit" ]);
+
+    assertOK($xpath = $N->getProperty($testPolicy));
+    my $policy = decode_json($xpath->findvalue('//value')->string_value);
+    my %projects = map { $_,1} @{$policy->{teams}->{T1}->{project}};
+    assertTrue(exists $projects{$::gTest}, "project associated with team");
+
+    createObject($::gTest, 'resource', 'T1', 'success',$adminSession);
+};
+
+#-------------------------------------------------------------------------
+# Verify that CreateObject jobs are cleaned up
+#-------------------------------------------------------------------------
+
+ntest "factory_cleanup", {}, sub {
+    assertOK($N->deleteProject($::gTest));
+    assertOK($N->deleteProject($::gTest."2"));
+    assertOK($N->deleteGroup('T1-A'));
+    assertOK($N->createGroup('T1-A', { userName => 'guest'}));
+
+    assertOK($N->setProperty($testPolicy, qq{
+{
+  "teams" : {
+    "T1" : {
+      "roles" : { "roleA" : { "group" : "T1-A", "create" : ["project"] } } }
+  },
+  "project" : [
+    { "pattern" : "$::gTest.*",
+      "acl" : [
+        { "role" : "roleA",
+          "access" : [ "allow", "inherit", "inherit", "inherit" ] } ] } ]
+}
+}));
+    applyPolicy($testPolicy);
+    my ($log1, $jobId1) = createObject($::gTest, 'project', 'T1');
+    my ($log2, $jobId2) = createObject($::gTest."2", 'project', 'T1');
+
+    # Verify the first job is deleted by the second job
+    assertEq('NoSuchJob', $N->getJobInfo($jobId1)->findvalue('//code'));
+    assertEq($jobId2, $N->getJobInfo($jobId2)->findvalue('//jobId')->string_value);
+};

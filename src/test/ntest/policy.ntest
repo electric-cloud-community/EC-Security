@@ -1,0 +1,521 @@
+# -*-Perl-*-
+
+# policy.ntest -
+#
+# Exercise functions in policy.pm
+#
+# Copyright (c) 2005-2012 Electric Cloud, Inc.
+# All rights reserved
+use strict;
+use warnings;
+use policy;
+use Test::MockObject;
+use JSON;
+
+local $::gCreatePrivateDirs  = 0;
+
+my ($ec, $batch);
+
+sub setup {
+    my $policy = shift;
+
+    $ec = new Test::MockObject();
+    $batch = new Test::MockObject();
+    $ec->set_always('newBatch', $batch);
+    $batch->set_true('submit','getProperty','evalScript', 'getAccess');
+    $batch->set_series('findvalue', $policy, 123);
+}
+
+sub assertCall {
+    my ($update, $expectedName, $expectedArgs, $desc) = @_;
+    my ($name, $args) = $update->next_call();
+    assertEq($expectedName, $name, $desc." name");
+    my @actuals = @{$args}[1..$#{$args}];
+    my $index = 0;
+    foreach my $expected (@{$expectedArgs}) {
+        if (ref($expected) eq 'HASH') {
+            assertHashEq($expected, shift @actuals, $desc . " arg ".++$index);
+        } else {
+            assertEq($expected, shift @actuals, $desc . " arg ".++$index);
+        }
+    }
+    assertEq("", join(' ',@actuals), "no extra args");
+}
+
+#-------------------------------------------------------------------------
+# constructor
+#-------------------------------------------------------------------------
+
+ntest 'constructor_no_policy', {}, sub {
+    setup(q{});
+
+    assertFalse(eval {my $p = new policy($ec, '/test');});
+    assertEq("Unable to find policy in '/test'\n", $@);
+};
+
+ntest 'constructor_bad_json', {}, sub {
+    setup(q{[});
+
+    assertFalse(eval {my $p = new policy($ec, '/test');});
+    assert(qr{Unable to decode policy: malformed.*\n\n\[\n}, '=~', $@);
+};
+
+ntest 'constructor_bad_policy', {}, sub {
+    setup(q{["foo"]});
+
+    assertFalse(eval {my $p = new policy($ec, '/test');});
+    assertEq("Unable to decode policy: \n[\"foo\"]\n", $@);
+};
+
+ntest 'constructor_bad_type', {}, sub {
+    setup(q{{"project":"foo"}});
+
+    assertFalse(eval {my $p = new policy($ec, '/test');});
+    assertEq("Value for type 'project' must be an array\n", $@);
+};
+
+ntest 'constructor', {}, sub {
+    setup(q{
+
+{
+    "managedGroups" : [ "g1", "g2", "g3" ],
+    "managedUsers" : [ "u1", "u2", "u3" ],
+    "teams" : {
+        "T1" : {
+            "roles" : {
+                "designer" : { "group" : "T1.d", "create" : [ "project" ] },
+                "user" : { "group" : "T1.u" },
+                "publisher" : { "group" : "T1.p", "create" : [ "artifact" ] }
+            },
+            "artifact" : [ "artifactA", "artifactB", "artifactE" ],
+            "project" : [ "projectA", "projectB", "projectE" ] },
+        "T2" : {
+            "roles" : {
+                "designer" : { "group" : "T2.d", "create" : [ "project" ] },
+                "user" : { "group" : "T2.u" },
+                "publisher" : { "group" : "T2.p", "create" : [ "artifact" ] } },
+                "artifact" : [ "artifactC", "artifactD", "artifactE" ],
+                "project" : [ "projectC", "projectD", "projectE" ] }
+    },
+    "systemObject" : [
+        { "name" : "server",
+          "acl" : [
+              { "group": "g1",
+                "access": ["inherit", "inherit", "inherit", "inherit" ] },
+              { "group": "g2",
+                "access": ["allow", "allow", "allow", "allow" ] } ] },
+        { "name" : "admin",
+          "acl" : [
+              { "group" : "g3",
+                "access" : [ "allow", "inherit", "inherit", "inherit" ] } ] }
+    ]
+}
+
+});
+
+    assertTrue(my $p = eval {new policy($ec, '/test')});
+    assertHashEq({
+        g1 => 1, g2 => 1, g3 => 1,
+        'T1.u' => 1, 'T1.d' => 1, 'T1.p' => 1,
+        'T2.u' => 1, 'T2.d' => 1, 'T2.p' => 1
+    }, $p->{managedGroups}, "managed groups");
+    assertHashEq({
+        u1 => 1, u2 => 1, u3 => 1,
+    }, $p->{managedUsers}, "managed users");
+    assertHashEq({
+        global        => {
+            designer  => [ 'T1.d', 'T2.d' ],
+            user      => [ 'T1.u', 'T2.u' ],
+            publisher => [ 'T1.p', 'T2.p' ]
+        },
+        project           => {
+            projectA      => {
+                designer  => [ 'T1.d' ],
+                user      => [ 'T1.u' ],
+                publisher => [ 'T1.p' ] },
+            projectB      => {
+                designer  => [ 'T1.d' ],
+                user      => [ 'T1.u' ],
+                publisher => [ 'T1.p' ] },
+            projectC      => {
+                designer  => [ 'T2.d' ],
+                user      => [ 'T2.u' ],
+                publisher => [ 'T2.p' ] },
+            projectD      => {
+                designer  => [ 'T2.d' ],
+                user      => [ 'T2.u' ],
+                publisher => [ 'T2.p' ] },
+            projectE      => {
+                designer  => [ 'T1.d', 'T2.d' ],
+                user      => [ 'T1.u', 'T2.u' ],
+                publisher => [ 'T1.p', 'T2.p' ] },
+        },
+        artifact          => {
+            artifactA     => {
+                designer  => [ 'T1.d' ],
+                user      => [ 'T1.u' ],
+                publisher => [ 'T1.p' ] },
+            artifactB     => {
+                designer  => [ 'T1.d' ],
+                user      => [ 'T1.u' ],
+                publisher => [ 'T1.p' ] },
+            artifactC     => {
+                designer  => [ 'T2.d' ],
+                user      => [ 'T2.u' ],
+                publisher => [ 'T2.p' ] },
+            artifactD     => {
+                designer  => [ 'T2.d' ],
+                user      => [ 'T2.u' ],
+                publisher => [ 'T2.p' ] },
+            artifactE     => {
+                designer  => [ 'T1.d', 'T2.d' ],
+                user      => [ 'T1.u', 'T2.u' ],
+                publisher => [ 'T1.p', 'T2.p' ] },
+        },
+    }, $p->{roleMap}, "role map");
+};
+
+#-------------------------------------------------------------------------
+# applyToObjects
+#-------------------------------------------------------------------------
+
+ntest 'applyToObjects', {}, sub {
+    setup(q{
+{
+    "plugin" : [
+        { "pattern" : "myPlugin", "acl" : [
+            { "group" : "foobar",
+              "access" : [ "allow", "inherit", "inherit", "inherit" ]}]}]
+}
+});
+    assertTrue(my $p = eval {new policy($ec, '/test')});
+
+    $batch->set_series('find', decode_json(q{
+{ "object" : [ { "objectName" : "applyToPlugin", "objectType" : "project" } ] }
+}));
+    my $update = new Test::MockObject();
+    $update->set_true('createAclEntry');
+
+    $p->applyToObjects('plugin', $update, 'myPlugin-1.0');
+
+    assertCall($update, 'createAclEntry',[
+        'group', 'foobar', {
+         readPrivilege => 'allow',
+         modifyPrivilege => 'inherit',
+         executePrivilege => 'inherit',
+         changePermissionsPrivilege => 'inherit',
+         projectName => '/plugins/myPlugin-1.0/project'
+    }], 'applyToObjects');
+    assertUndef($update->next_call());
+};
+
+#-------------------------------------------------------------------------
+# createObject
+#-------------------------------------------------------------------------
+
+ntest 'createObject_badArtifact', {}, sub {
+    setup(q{
+{
+    "artifact" : [
+        { "pattern" : ".*", "acl" : [
+             { "group" : "foobar",
+              "access" : [ "allow", "inherit", "inherit", "inherit" ]}]}]
+}
+});
+    assertTrue(my $p = eval {new policy($ec, '/test')});
+    my $update = new Test::MockObject();
+    $update->set_true('createAclEntry');
+
+    # Test
+    eval {$p->createObject($update, 'artifact', 'badname')};
+
+    # Verify
+    assertEq("ERROR: Unable to parse artifact name 'badname': Artifact names must be of the form groupId:artifactKey\n", $@);
+};
+
+ntest 'createObject_artifact', {}, sub {
+    setup(q{
+{
+    "artifact" : [
+        { "pattern" : ".*", "acl" : [
+             { "group" : "foobar",
+              "access" : [ "allow", "inherit", "inherit", "inherit" ]}]}]
+}
+});
+    assertTrue(my $p = eval {new policy($ec, '/test')});
+    my $update = new Test::MockObject();
+    $update->set_true('createAclEntry', 'createArtifact');
+
+    # Test
+    eval {$p->createObject($update, 'artifact', 'group1:af1')};
+
+    # Verify
+    assertEq("", $@);
+    assertCall($update, 'createArtifact', ['group1', 'af1', {}],
+               "create artifact");
+    assertCall($update, 'createAclEntry', ['group', 'foobar', {
+        readPrivilege => 'allow',
+        modifyPrivilege => 'inherit',
+        executePrivilege => 'inherit',
+        changePermissionsPrivilege => 'inherit',
+        artifactName => 'group1:af1'
+    }], "create artifact ace");
+    assertUndef($update->next_call());
+
+};
+
+ntest 'createObject_resource', {}, sub {
+    setup(q{
+{
+    "resource" : [
+        { "pattern" : ".*", "acl" : [
+             { "group" : "foobar",
+              "access" : [ "allow", "inherit", "inherit", "inherit" ]}]}]
+}
+});
+    assertTrue(my $p = eval {new policy($ec, '/test')});
+    my $update = new Test::MockObject();
+    $update->set_true('createAclEntry', 'createResource');
+
+    # Test
+    eval {$p->createObject($update, 'resource', 'res1')};
+
+    # Verify
+    assertEq("", $@);
+    assertCall($update, 'createResource', ['res1', {}], "create resource");
+    assertCall($update, 'createAclEntry', ['group', 'foobar', {
+        readPrivilege => 'allow',
+        modifyPrivilege => 'inherit',
+        executePrivilege => 'inherit',
+        changePermissionsPrivilege => 'inherit',
+        resourceName => 'res1'
+    }], "create resource ace");
+    assertUndef($update->next_call());
+
+};
+
+ntest 'createObject_firstMatch', {}, sub {
+    setup(q{
+{
+    "resource" : [
+        { "pattern" : "noMatch", "acl" : [
+             { "group" : "fail2",
+              "access" : [ "allow", "inherit", "inherit", "inherit" ]}]},
+        { "pattern" : "res", "acl" : [
+             { "group" : "foobar",
+              "access" : [ "allow", "inherit", "inherit", "inherit" ]}]},
+        { "pattern" : ".*", "acl" : [
+             { "group" : "fail2",
+              "access" : [ "allow", "inherit", "inherit", "inherit" ]}]}]
+}
+});
+    assertTrue(my $p = eval {new policy($ec, '/test')}, $@);
+    my $update = new Test::MockObject();
+    $update->set_true('createAclEntry', 'createResource');
+
+    # Test
+    eval {$p->createObject($update, 'resource', 'res1')};
+
+    # Verify
+    assertEq("", $@);
+    assertCall($update, 'createResource', ['res1', {}], "create resource");
+    assertCall($update, 'createAclEntry', ['group', 'foobar', {
+        readPrivilege => 'allow',
+        modifyPrivilege => 'inherit',
+        executePrivilege => 'inherit',
+        changePermissionsPrivilege => 'inherit',
+        resourceName => 'res1'
+    }], "create resource ace");
+    assertUndef($update->next_call());
+};
+
+
+#-------------------------------------------------------------------------
+# loadAcl
+#-------------------------------------------------------------------------
+
+ntest 'loadAcl', {}, sub {
+    my $acl = policy::loadAcl(decode_json(q{
+{
+   "requestId" : "1",
+   "object" : [
+      {
+         "objectName" : "proj1",
+         "aclEntry" : [
+            {
+               "readPrivilege" : "allow",
+               "executePrivilege" : "allow",
+               "principalType" : "user",
+               "changePermissionsPrivilege" : "allow",
+               "principalName" : "user1",
+               "modifyPrivilege" : "allow"
+            },
+            {
+               "readPrivilege" : "inherit",
+               "executePrivilege" : "inherit",
+               "principalType" : "user",
+               "changePermissionsPrivilege" : "allow",
+               "principalName" : "user2",
+               "modifyPrivilege" : "allow"
+            }
+         ],
+         "objectType" : "project",
+         "objectId" : "project-278"
+      },
+      {
+         "objectName" : "projects",
+         "aclEntry" : [
+            {
+               "readPrivilege" : "allow",
+               "executePrivilege" : "inherit",
+               "principalType" : "group",
+               "changePermissionsPrivilege" : "inherit",
+               "principalName" : "EC-Admin",
+               "modifyPrivilege" : "allow"
+            }
+         ]
+      }
+   ]
+}
+}));
+    assertHashEq({
+        aces => {
+            'user:user1' => [ 'allow', 'allow', 'allow', 'allow' ],
+            'user:user2' => [ 'inherit', 'allow', 'inherit', 'allow' ]
+        },
+        origKeys => {
+            'user:user1' => 1,
+            'user:user2' => 1
+        }
+    }, $acl, 'acl');
+};
+
+ntest 'loadAcl_noAce', {}, sub {
+    my $acl = policy::loadAcl(decode_json(q{
+{
+   "requestId" : "1",
+   "object" : [
+      {
+         "objectName" : "proj1",
+         "objectType" : "project",
+         "objectId" : "project-278"
+      },
+      {
+         "objectName" : "projects",
+         "aclEntry" : [
+            {
+               "readPrivilege" : "allow",
+               "executePrivilege" : "inherit",
+               "principalType" : "group",
+               "changePermissionsPrivilege" : "inherit",
+               "principalName" : "EC-Admin",
+               "modifyPrivilege" : "allow"
+            }
+         ]
+      }
+   ]
+}
+}));
+    assertHashEq({}, $acl, 'empty acl');
+};
+
+#-------------------------------------------------------------------------
+# handlePropertySheet
+#-------------------------------------------------------------------------
+
+ntest 'handlePropertySheet', {}, sub {
+    setup(q{
+
+{ "managedGroups" : [ ],
+  "teams" : {
+    "T1" : {
+      "roles" : {
+         "roleA" : { "group" : "T1-A" },
+         "roleB" : { "group" : "T1-B" }
+      }
+    },
+    "T2" : {
+      "roles" : {
+         "roleA" : { "group" : "T2-A" },
+         "roleB" : { "group" : "T2-B" }
+      }
+    }
+  },
+  "propertySheet" : [
+    { "path" : "/projects/A-$::gTest/foobar", "acl" : [
+        { "role" : "roleB",
+          "access" : [ "allow", "allow", "allow", "inherit" ] } ] }
+  ]
+}
+});
+    assertTrue(my $p = eval {new policy($ec, '/test')});
+    assertEq('',$@);
+
+    my $result = new Test::MockObject();
+    $result->set_false('findnodes');
+    map { $ec->set_always($_, $result) } (
+        'findObjects',
+        'getArtifacts',
+        'getEmailConfigs',
+        'getGateways',
+        'getPlugins',
+        'getResources',
+        'getRepositories',
+        'getWorkspaces',
+        'getZones',
+    );
+
+    my $update = new Test::MockObject();
+    $update->set_true('createAclEntry');
+    $batch->set_always('expandString', $batch);
+    $batch->set_series('findvalue', "1234");
+    $batch->set_series('find', decode_json(q{
+{
+   "requestId" : "1",
+   "object" : [
+      {
+         "objectName" : "foobar",
+         "objectType" : "propertySheet",
+         "objectId" : "propertySheetId-278"
+      },
+      {
+         "objectName" : "projects",
+         "aclEntry" : [
+            {
+               "readPrivilege" : "allow",
+               "executePrivilege" : "inherit",
+               "principalType" : "group",
+               "changePermissionsPrivilege" : "inherit",
+               "principalName" : "EC-Admin",
+               "modifyPrivilege" : "allow"
+            }
+         ]
+      }
+   ]
+}
+}));
+
+    # Test
+    $p->apply($update);
+
+    # Verify
+    assertCall($update, 'createAclEntry', [
+        'group', 'T2-B', {
+         readPrivilege => 'allow',
+         modifyPrivilege => 'allow',
+         executePrivilege => 'allow',
+         changePermissionsPrivilege => 'inherit',
+         propertySheetId => 1234
+    }], 'apply1');
+    assertCall($update, 'createAclEntry', [
+        'group', 'T1-B', {
+         readPrivilege => 'allow',
+         modifyPrivilege => 'allow',
+         executePrivilege => 'allow',
+         changePermissionsPrivilege => 'inherit',
+         propertySheetId => 1234
+    }], 'apply2');
+    assertUndef($update->next_call());
+};
+
+1;

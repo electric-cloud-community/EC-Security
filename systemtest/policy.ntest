@@ -1,0 +1,408 @@
+# -*-Perl-*-
+
+# policy.ntest -
+#
+# Exercise the policy module
+#
+# Copyright (c) 2005-2010 Electric Cloud, Inc.
+# All rights reserved
+
+use strict;
+use warnings;
+use ECTest;
+use JSON;
+use securityTest;
+use Data::Dumper;
+
+initCommander();
+
+my $N = $adminSession;
+my $xpath;
+
+my $initialPolicy = '/plugins/EC-Security/project/ECPolicies/initial';
+my $basicPolicy = '/plugins/EC-Security/project/ECPolicies/basic';
+my $testPolicy = '/plugins/EC-Security/project/CustomPolicies/test';
+
+# Ensure EC-Utilities exists since some of the tests below depend on it,
+# ignore errors
+
+$adminSession->createProject('EC-Utilities');
+
+#-------------------------------------------------------------------------
+# updatePolicy
+#-------------------------------------------------------------------------
+
+ntest "updatePolicy", {}, sub {
+    assertOK($N->deleteProject($::gTest));
+    assertOK($N->deleteGroup('T1-A'));
+    assertOK($N->deleteArtifact($::gTest.':A1'));
+    assertOK($N->createGroup('T1-A', { userName => 'guest'}));
+
+    assertOK($N->setProperty($testPolicy, qq{
+{
+  "teams" : {
+    "T1" : {
+      "roles" : { "roleA" : { "group" : "T1-A",
+                              "create" : ["project", "artifact"] } } } },
+  "artifact" : [
+    { "pattern" : "$::gTest.*",
+      "acl" : [
+        { "role" : "roleA",
+          "access" : [ "allow", "allow", "inherit", "inherit" ] } ] } ],
+  "project" : [
+    { "pattern" : "$::gTest",
+      "acl" : [
+        { "role" : "roleA",
+          "access" : [ "allow", "inherit", "inherit", "inherit" ] } ] } ],
+  "systemObject" : [
+    { "name" : "log",
+      "acl" : [
+        { "group" : "Everyone",
+          "access" : [ "allow", "inherit", "inherit", "inherit" ] } ] } ]
+}
+}));
+    applyPolicy($testPolicy);
+    createObject($::gTest, 'project', 'T1');
+    assertOK($N->getProject($::gTest));
+    assertAcl('T1-A', { projectName => $::gTest },
+              [ "allow", "inherit", "inherit", "inherit" ]);
+
+    createObject($::gTest.':A1', 'artifact', 'T1');
+    assertOK($N->getArtifact($::gTest.':A1'));
+    assertAcl('T1-A', { artifactName => $::gTest.':A1' },
+              [ "allow", "allow", "inherit", "inherit" ]);
+
+    assertOK($xpath = $N->getProperty($testPolicy));
+    my $policy = decode_json($xpath->findvalue('//value')->string_value);
+    my %projects = map { $_,1} @{$policy->{teams}->{T1}->{project}};
+    assertTrue(exists $projects{$::gTest}, "project associated with team");
+
+    # Verify the policy is well formed by reading it back in.
+    assertOK($N->deleteAclEntry('group', 'Everyone', {
+        systemObjectName => 'log'}));
+    applyPolicy($testPolicy);
+    assertAcl('group', 'Everyone', {systemObjectName => "log"},
+              [ "allow", "inherit", "inherit", "inherit" ]);
+
+};
+
+#-------------------------------------------------------------------------
+# Verify that managed groups and users are removed from acls if they aren't
+# explicitly listed.
+#-------------------------------------------------------------------------
+
+ntest "clearAcl", {}, sub {
+    assertOK($N->setProperty($testPolicy, q{
+{ "managedGroups" : [ "groupA", "groupB" ],
+  "managedUsers" : [ "userA", "userB" ],
+  "systemObject" : [ { "name" : "log", "acl" : [ ] } ]
+}
+}));
+    assertOK($N->deleteAclEntry('group', 'groupA', {
+        systemObjectName => 'log'}));
+    assertOK($N->createAclEntry('group', 'groupA', {
+        systemObjectName => 'log'}));
+    assertOK($N->deleteAclEntry('user', 'userB', {
+        systemObjectName => 'log'}));
+    assertOK($N->createAclEntry('user', 'userB', {
+        systemObjectName => 'log'}));
+    applyPolicy($testPolicy);
+    assertEq('NoSuchAclEntry', $N->getAclEntry('group', 'groupA', {
+        systemObjectName => 'log'})->findvalue("//code"));
+    assertEq('NoSuchAclEntry', $N->getAclEntry('user', 'userB', {
+        systemObjectName => 'log'})->findvalue("//code"));
+};
+
+#-------------------------------------------------------------------------
+# Initial policy tests
+#-------------------------------------------------------------------------
+
+ntest "initial_policy", {}, sub {
+    applyPolicy($initialPolicy);
+
+    assertAcl('Everyone', {systemObjectName => 'server'},
+              ['allow', 'inherit', 'allow', 'inherit']);
+
+    assertAcl('Everyone', {systemObjectName => 'plugins'},
+              ['allow', 'inherit', 'inherit', 'inherit']);
+
+    assertAcl('Everyone', {systemObjectName => 'forceAbort'},
+              ['inherit', 'inherit', 'allow', 'inherit']);
+
+    assertAcl('Everyone', {systemObjectName => 'artifacts'},
+              ['allow', 'allow', 'inherit', 'inherit']);
+
+    assertOK(my $xpath = $N->getProperty(
+        '/server/propertySheet/propertySheetId'));
+    assertAcl('Everyone', {propertySheetId => $xpath->findvalue('//value') },
+              ['allow', 'inherit', 'inherit', 'inherit']);
+
+    assertAcl('Everyone', {projectName => 'EC-Utilities' },
+              ['allow', 'inherit', 'inherit', 'inherit']);
+
+    assertOK($N->deleteProject($::gTest));
+    assertOK($N->createProject($::gTest));
+    assertOK($N->createPlugin($::gTest, '1.0', $::gTest));
+    assertOK($xpath = $N->promotePlugin($::gTest.'-1.0'));
+    assertOK($N->waitForJob($xpath->findvalue('//jobId')->string_value));
+
+    assertAcl('Everyone', {projectName => "/plugins/$::gTest/project" },
+              ['allow', 'inherit', 'inherit', 'inherit']);
+};
+
+#-------------------------------------------------------------------------
+# Basic policy tests
+#-------------------------------------------------------------------------
+
+ntest "basic_policy", {}, sub {
+    applyPolicy($basicPolicy);
+    assertAcl('Everyone', {systemObjectName => 'server'},
+              ['inherit', 'inherit', 'inherit', 'inherit']);
+    assertAcl('EC-Admins', {systemObjectName => 'server'},
+              ['allow', 'allow', 'allow', 'allow']);
+    assertAcl('EC-Designers', {systemObjectName => 'admin'},
+              ['allow', 'inherit', 'inherit', 'inherit']);
+
+    assertAcl('Everyone', {systemObjectName => 'artifacts'},
+              ['allow', 'inherit', 'inherit', 'inherit']);
+    assertAcl('EC-Designers', {systemObjectName => 'artifacts'},
+              ['allow', 'allow', 'inherit', 'inherit']);
+    assertAcl('Everyone', {systemObjectName => 'emailConfigs'},
+              ['allow', 'inherit', 'allow', 'inherit']);
+    assertAcl('Everyone', {systemObjectName => 'repositories'},
+              ['allow', 'inherit', 'inherit', 'inherit']);
+
+    assertOK(my $xpath = $N->getProperty(
+        '/server/propertySheet/propertySheetId'));
+    assertAcl('Everyone', {propertySheetId => $xpath->findvalue('//value') },
+              ['allow', 'inherit', 'inherit', 'inherit']);
+
+    assertAcl('Everyone', {projectName => 'EC-Utilities' },
+              ['allow', 'inherit', 'inherit', 'inherit']);
+    assertAcl('EC-Designers', {projectName => 'EC-Utilities' },
+              ['allow', 'inherit', 'allow', 'inherit']);
+    assertAcl('EC-Admins', {projectName => 'EC-Utilities' },
+              ['allow', 'allow', 'allow', 'allow']);
+
+    assertAcl('Everyone', {projectName => '/plugins/EC-Security/project' },
+              ['allow', 'inherit', 'inherit', 'inherit']);
+
+    assertOK($N->deleteProject($::gTest));
+    assertOK($N->createProject($::gTest));
+    assertOK($N->createPlugin($::gTest, '1.0', $::gTest));
+    assertOK($xpath = $N->promotePlugin($::gTest.'-1.0'));
+    assertOK($N->waitForJob($xpath->findvalue('//jobId')->string_value));
+
+    assertAcl('Everyone', {projectName => "/plugins/$::gTest/project" },
+              ['allow', 'inherit', 'inherit', 'inherit']);
+};
+
+#-------------------------------------------------------------------------
+# Team policy tests
+#-------------------------------------------------------------------------
+
+ntest "team_projects", {}, sub {
+    foreach ("A-$::gTest", "B-$::gTest", "C-$::gTest") {
+        assertOK($N->deleteProject($_));
+        assertOK($N->createProject($_));
+        assertOK($N->createAclEntry('group', 'T1-A', {
+            projectName => $_}));
+    }
+    assertOK($N->deleteAclEntry('group', 'T1-A', {
+        systemObjectName => 'log'}));
+    assertOK($N->createAclEntry('group', 'T1-A', {
+        systemObjectName => 'log'}));
+    assertOK($xpath = $N->createProperty("/projects/A-$::gTest/foobar", {
+        propertyType => 'sheet'}));
+    my $sheetId = $xpath->findvalue("//propertySheetId")->string_value;
+    assertOK($N->createAclEntry('group', 'T1-A', {
+        propertySheetId => $sheetId}));
+
+    assertOK($N->setProperty($testPolicy, qq{
+{ "managedGroups" : [ ],
+  "teams" : {
+    "T1" : {
+      "roles" : {
+         "roleA" : { "group" : "T1-A" },
+         "roleB" : { "group" : "T1-B" }
+      },
+      "project": [ "A-$::gTest", "B-$::gTest" ]
+    },
+    "T2" : {
+      "roles" : {
+         "roleA" : { "group" : "T2-A" },
+         "roleB" : { "group" : "T2-B" }
+      },
+      "project": [ "C-$::gTest", "B-$::gTest" ]
+    }
+  },
+  "systemObject" : [
+    { "name" : "log", "acl" : [
+        { "role" : "roleB",
+          "access" : [ "allow", "allow", "allow", "inherit" ] } ] } ],
+  "propertySheet" : [
+    { "path" : "/projects/A-$::gTest/foobar", "acl" : [
+        { "role" : "roleB",
+          "access" : [ "allow", "allow", "allow", "inherit" ] } ] }
+  ],
+  "project" : [
+    { "pattern" : ".*$::gTest",
+      "acl" : [ {"role" : "roleA",
+                 "access" : [ "allow", "inherit", "allow", "inherit" ] },
+                {"role" : "roleB",
+                 "access" : [ "allow", "allow", "allow", "inherit" ] } ] } ]
+}
+}));
+
+    applyPolicy($testPolicy);
+
+    # Verify only the expected aces exist
+
+    my @cases = ('T2-A' => "A-$::gTest",
+                 'T2-B' => "A-$::gTest",
+                 'T1-A' => "C-$::gTest",
+                 'T1-A' => "C-$::gTest");
+    while (@cases) {
+        my ($group, $project) = splice(@cases, 0, 2);
+        assertEq('NoSuchAclEntry', $N->getAclEntry('group', $group, {
+            projectName => $project})->findvalue("//code"),
+             "no entry for $group on $project");
+    }
+
+    assertAcl('Everyone', {systemObjectName => 'artifacts'},
+              ['allow', 'inherit', 'inherit', 'inherit']);
+    assertAcl('Everyone', {systemObjectName => 'emailConfigs'},
+              ['allow', 'inherit', 'allow', 'inherit']);
+    assertAcl('Everyone', {systemObjectName => 'repositories'},
+              ['allow', 'inherit', 'inherit', 'inherit']);
+
+    assertEq('NoSuchAclEntry', $N->getAclEntry('group', 'T1-A', {
+            systemObjectName => 'log'})->findvalue("//code"),
+             "no entry for T1-A on log");
+
+    assertAcl('T1-A', {projectName => "A-$::gTest"},
+              ["allow", "inherit", "allow", "inherit"]);
+    assertAcl('T1-B', {projectName => "A-$::gTest"},
+              ["allow", "allow", "allow", "inherit"]);
+    assertAcl('T1-A', {projectName => "B-$::gTest"},
+              ["allow", "inherit", "allow", "inherit"]);
+    assertAcl('T1-B', {projectName => "B-$::gTest"},
+              ["allow", "allow", "allow", "inherit"]);
+    assertAcl('T2-A', {projectName => "C-$::gTest"},
+              ["allow", "inherit", "allow", "inherit"]);
+    assertAcl('T2-B', {projectName => "C-$::gTest"},
+              ["allow", "allow", "allow", "inherit"]);
+    assertAcl('T2-A', {projectName => "B-$::gTest"},
+              ["allow", "inherit", "allow", "inherit"]);
+    assertAcl('T2-B', {projectName => "B-$::gTest"},
+              ["allow", "allow", "allow", "inherit"]);
+    assertAcl('T1-B', {projectName => "A-$::gTest"},
+              ["allow", "allow", "allow", "inherit"]);
+    assertAcl('T2-B', {projectName => "C-$::gTest"},
+              ["allow", "allow", "allow", "inherit"]);
+
+    assertAcl('T1-B', {systemObjectName => 'log'},
+              ["allow", "allow", "allow", "inherit"]);
+    assertAcl('T2-B', {systemObjectName => 'log'},
+              ["allow", "allow", "allow", "inherit"]);
+
+    assertAcl('T1-B', {propertySheetId => $sheetId},
+              ["allow", "allow", "allow", "inherit"]);
+    assertAcl('T2-B', {propertySheetId => $sheetId},
+              ["allow", "allow", "allow", "inherit"]);
+};
+
+#-------------------------------------------------------------------------
+# applyRule
+#-------------------------------------------------------------------------
+
+ntest "applyRule_types", {}, sub {
+    assertOK($N->deleteProject($::gTest));
+    assertOK($N->createProject($::gTest));
+    assertOK($N->setProperty($testPolicy, qq{
+{
+    "teams" : {
+        "T1" : {
+            "roles" : { "roleA" : { "group" : "roleA-group" } },
+            "project" : [ "$::gTest" ] } },
+    "project" : [ {
+        "pattern" : "$::gTest",
+        "acl" : [
+            { "group" : "groupA", "access" : [ "allow", "inherit", "inherit", "inherit" ] },
+            { "user" : "foo", "access" : [ "allow", "allow", "allow", "inherit" ] },
+            { "project" : "$::gTest", "access" : [ "allow", "inherit", "allow", "inherit" ] },
+            { "role" : "roleA", "access" : [ "allow", "inherit", "allow", "inherit" ] } ] } ]
+}
+}));
+    applyPolicy($testPolicy);
+    assertAcl('group', 'groupA', {projectName => "$::gTest"},
+              [ "allow", "inherit", "inherit", "inherit" ]);
+    assertAcl('user', 'foo', {projectName => "$::gTest"},
+              [ "allow", "allow", "allow", "inherit" ]);
+    assertAcl('user', "project: $::gTest", {projectName => "$::gTest"},
+              [ "allow", "inherit", "allow", "inherit" ]);
+    assertAcl('group', 'roleA-group', {projectName => "$::gTest"},
+              [ "allow", "inherit", "allow", "inherit" ]);
+
+};
+
+#-------------------------------------------------------------------------
+# failure tests
+#-------------------------------------------------------------------------
+
+ntest "applyRule_badAce", {}, sub {
+    assertOK($N->deleteProject($::gTest));
+    assertOK($N->createProject($::gTest));
+    assertOK($N->setProperty($testPolicy, qq{
+{
+  "project" : [
+    { "pattern" : "$::gTest",
+       "acl" : [ { } ] } ] }
+}));
+    my $log = applyPolicy($testPolicy, 'error');
+    assertSubstring("ERROR: ACE without principal type\n\t{}", $log);
+};
+
+ntest "checkCreate_badTeam", {}, sub {
+    assertOK($N->setProperty($testPolicy, qq{
+{
+  "teams" : {
+  },
+  "project" : [
+    { "pattern" : "$::gTest",
+      "acl" : [
+        { "role" : "roleA",
+          "access" : [ "allow", "inherit", "inherit", "inherit" ] } ] } ]
+}
+}));
+    $N->setProperty('/plugins/EC-Security/project/currentPolicy', $testPolicy);
+    my $log = createObject($::gTest, 'project', 'T1', 'error');
+    assertSubstring("Unknown team 'T1'", $log);
+};
+
+#-------------------------------------------------------------------------
+# Verify that a user that is not a privileged member of the team cannot
+# create objects.
+#-------------------------------------------------------------------------
+ntest "checkCreate_noCreate", {}, sub {
+
+    assertOK($N->setProperty($testPolicy, qq{
+{
+  "teams" : {
+    "T1" : {
+            "roles" : { "roleA" : { "group" : "roleA-group" } },
+            "project" : [ "$::gTest" ] } },
+  "project" : [
+    { "pattern" : "$::gTest",
+      "acl" : [
+        { "role" : "roleA",
+          "access" : [ "allow", "inherit", "inherit", "inherit" ] } ] } ]
+}
+}));
+    $N->setProperty('/plugins/EC-Security/project/currentPolicy', $testPolicy);
+    my $log = createObject($::gTest, 'project', 'T1', 'error');
+    assertSubstring("User guest is not allowed to create projects for team T1", $log);
+};
+
+
+1;

@@ -1,0 +1,90 @@
+{
+    "managedGroups" : [ "EC-Admins", "EC-Designers", "Everyone" ],
+    "systemObject" : [
+        { "name" : "server",
+            "acl" : [
+                { "group": "Everyone",
+                    "access": ["inherit", "inherit", "inherit", "inherit" ] },
+                { "group": "EC-Admins",
+                    "access": ["allow", "allow", "allow", "allow" ] } ] },
+        { "name" : "admin",
+            "acl" : [
+                { "group" : "EC-Designers",
+                    "access" : [ "allow", "inherit", "inherit", "inherit" ] } ] },
+        { "name" : "artifacts",
+            "acl" : [
+                { "group" : "EC-Designers",
+                  "access" : [ "allow", "allow", "inherit", "inherit" ] },
+                { "group" : "Everyone",
+                  "access" : [ "allow", "inherit", "inherit", "inherit" ] } ] },
+        { "name" : "directory",
+            "acl" : [
+                { "group" : "EC-Designers",
+                    "access" : [ "allow", "inherit", "inherit", "inherit" ] } ] },
+        { "name" : "emailConfigs",
+            "acl" : [
+                { "group" : "Everyone",
+                    "access" : [ "allow", "inherit", "allow", "inherit" ] } ] },
+        { "name" : "forceAbort", "acl" : [ ] },
+        { "name" : "licensing", "acl" : [ ] },
+        { "name" : "log", "acl" : [ ] },
+        { "name" : "plugins",
+            "acl" : [
+                { "group" : "Everyone",
+                    "access" : [ "allow", "inherit", "inherit", "inherit" ] } ] },
+        { "name" : "priority", "acl" : [ ] },
+        { "name" : "projects",
+            "acl" : [
+                { "group" : "Everyone",
+                    "access" : [ "allow", "inherit", "allow", "inherit" ] },
+                { "group" : "EC-Designers",
+                    "access" : [ "allow", "allow", "allow", "inherit" ] } ] },
+        { "name" : "repositories",
+            "acl" : [
+                { "group" : "Everyone",
+                    "access" : [ "allow", "inherit", "inherit", "inherit" ] } ] },
+        { "name" : "resources",
+            "acl" : [
+                { "group" : "Everyone",
+                    "access" : [ "allow", "inherit", "allow", "inherit" ] } ] },
+        { "name" : "session",
+            "acl" : [
+                { "group" : "Everyone",
+                    "access" : [ "inherit", "inherit", "allow", "inherit" ] } ] },
+        { "name" : "test", "acl" : [ ] },
+        { "name" : "workspaces",
+            "acl" : [
+                { "group" : "Everyone",
+                    "access" : [ "allow", "inherit", "allow", "inherit" ] } ] },
+        { "name" : "zonesAndGateways",
+            "acl" : [
+                { "group" : "Everyone",
+                    "access" : [ "allow", "inherit", "inherit", "inherit" ] } ] }
+    ],
+    "propertySheet" : [
+        { "path" : "/server/propertySheet",
+            "acl" : [
+                { "group" : "Everyone",
+                    "access" : [ "allow", "inherit", "inherit", "inherit" ] } ] } ],
+    "project" : [
+        { "pattern" : "EC-Utilities",
+            "acl" : [
+                { "group" : "Everyone",
+                    "access" : [ "allow", "inherit", "inherit", "inherit" ] },
+                { "group" : "EC-Designers",
+                    "access" : [ "allow", "inherit", "allow", "inherit" ] },
+                { "group" : "EC-Admins",
+                    "access" : [ "allow", "allow", "allow", "allow" ] } ] } ],
+    "plugin" : [
+        { "pattern" : ".*",
+            "acl" : [
+                { "group" : "Everyone",
+                    "access" : [ "allow", "inherit", "inherit", "inherit" ] } ] } ],
+    "artifact" : [ ],
+    "emailConfig" : [ ],
+    "gateway" : [ ],
+    "repository" : [ ],
+    "resource" : [ ],
+    "workspace" : [ ],
+    "zone" : [ ]
+}
