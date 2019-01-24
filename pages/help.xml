@@ -8,7 +8,7 @@
 	</head>
 
 	<body>
-		<p>July 1, 2015</p>
+		<p>January 24, 2019</p>
 		<div class="help">
 			<h1 class="help">@PLUGIN_KEY@</h1>
 			<h2 class="help">Overview</h2>
@@ -245,6 +245,11 @@
 			</p>
 
 			<h1 class="help">Release Notes</h1>
+
+            <h2>@PLUGIN_KEY@ 1.2.2</h2>
+            <ul>
+                <li>Added metadata that is required for 9.0 release.</li>
+            </ul>
 
 			<h2>@PLUGIN_KEY@ 1.2.1</h2>
 			<ul>
