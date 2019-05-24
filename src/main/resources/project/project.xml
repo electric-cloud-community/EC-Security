@@ -13,7 +13,7 @@
       </property>
       <property>
         <propertyName>ECPolicies</propertyName>
-        <description>Policy definitions provided by Electric Cloud.  Do not edit these as they will be replaced during upgrades.</description>
+        <description>Policy definitions provided by CloudBees.  Do not edit these as they will be replaced during upgrades.</description>
         <propertySheet>
           <property>
             <propertyName>basic</propertyName>
@@ -223,7 +223,7 @@
       </property>
       <property>
         <propertyName>ec_setup</propertyName>
-        <description>Electric Flow plugin setup script.  Do not edit.</description>
+        <description>CloudBees Flow plugin setup script.  Do not edit.</description>
         <expandable>0</expandable>
         <value></value>
       </property>
