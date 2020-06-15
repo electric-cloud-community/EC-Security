@@ -3,7 +3,7 @@
     <key>@PLUGIN_KEY@</key>
     <version>@PLUGIN_VERSION@</version>
     <label>@PLUGIN_KEY@</label>
-    <description>CloudBees Flow security policies</description>
+    <description>CloudBees CD security policies</description>
     <help>help.xml</help>
     <author>CloudBees</author>
     <authorUrl>http://www.electric-cloud.com/support</authorUrl>

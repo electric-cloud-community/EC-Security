@@ -8,7 +8,7 @@
     </head>
 
     <body>
-        <p>Revised on May 24, 2019</p>
+        <p>Revised on June 15, 2020</p>
         <div class="help">
             <h1 class="help">@PLUGIN_KEY@</h1>
             <h2 class="help">Overview</h2>
@@ -246,9 +246,15 @@
 
             <h1 class="help">Release Notes</h1>
 
-    <h2 id="1.2.3">@PLUGIN_KEY@ 1.2.3</h2>
-    <p>Renaming from "Electric Cloud" to "CloudBees"</p>
+            <h2>@PLUGIN_KEY@-1.2.4</h2>
+            <ul>
+                <li>Renaming from "CloudBees Flow" to "CloudBees CD".</li>
+            </ul>
 
+            <h2>@PLUGIN_KEY@ 1.2.3</h2>
+            <ul>
+                <li>Renaming from "Electric Cloud" to "CloudBees"</li>
+            </ul>
 
             <h2>@PLUGIN_KEY@ 1.2.2</h2>
             <ul>
