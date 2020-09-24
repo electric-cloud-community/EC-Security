@@ -10,4 +10,6 @@
     <category>System</category>
     <ecSupportLevel>10</ecSupportLevel>
     <commander-version min="4.2"/>
+    <hasAdoc>true</hasAdoc>
+    <catalogLabel>Security Policies</catalogLabel>
 </plugin>
