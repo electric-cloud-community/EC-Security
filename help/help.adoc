@@ -1,0 +1,146 @@
+Revised on June 15, 2020
+
+== Policy definition
+
+A policy defines a list of groups that will be managed by the policy. If a group is managed by the policy, it will be removed from or added to managed objects according to a set of rules defined in the policy.
+
+A policy also optionally defines a set of teams. Each team has a name, one or more defined roles, and a list of objects that are associated with the team. Roles are abstract names that map to a single group in each team. Different teams can define different groups for the same role. Roles are referenced in rules to determine what privileges are to be granted to the specified groups.
+
+The bulk of a policy is made of rules for how ACLs should be modified for a set of objects. The policy consists of a set of patterns that identify different objects in the system. For each pattern, there will be one or more rules that specify a group or role and the set of privileges that should be applied to the object's ACL. If a given object matches more than one pattern, then the first match wins.
+
+When a rule is applied to an object, all ACL entries associated with any managed groups are replaced by the entries defined in the rule. Only ACL entries for managed groups and groups associated with defined roles will be modified. Any other acl entries will be left untouched. This allows automatically generated entries (for example, for project principals) to be ignored by the policy.
+
+== Policy examples
+
+Refer to the predefined policies in the link:../../link/projectDetails/projects/@PLUGIN_NAME@?tabGroup=properties[ECPolicies] property sheet of the EC-Security project for examples of some different types of policies:
+
+* initial - a configuration similar to the default settings after a fresh install
+* basic - a policy with three groups "EC-Admins", "EC-Designers", "Everyone"
+* sampleTeam - a team based policy with two defined teams
+
+== Using the CreateObject factory procedure
+
+When configured to use a policy that defines one or more teams, the ability to create new projects and artifacts is restricted to global administrators. In order to allow team designers the ability to create new projects for their team, EC-Security provides the link:../../link/runProcedure/projects/@PLUGIN_NAME@/procedures/CreateObject[CreateObject] procedure. This procedure prompts for the name of the new project, and the name of the team that should be the owner of the new project. If the user running the procedure is a member of a group that is allowed to create projects for the team, then the procedure will create the project, associate it with the team, and apply the security policy to the newly created project. The CreateObject procedure also supports creating artifacts, resources and workspaces that are associated with a team.
+
+Note that the security policy property is updated to reflect the existence of a new project for the specified team. If the project is deleted at some point in the future, then it should be removed from the corresponding entry in the policy definition.
+
+== Policy format specification
+
+A policy definition is a http://www.json.org[JSON] formatted object that conforms to the following structure:
+
+POLICY is
+
+....
+      { "managedGroups" : [ GROUPNAME, ... ],
+        "teams" : { TEAMNAME : TEAM, ... },
+        "systemObject" : [
+           { "name" : OBJECTNAME, "acl" : [ ACLRULE, ... ] }, ... ],
+        "propertySheet" : [
+           { "path" : PROPERTYPATH, "acl" : [ ACLRULE, ... ] }, ... ],
+        "artifact" : [
+           { "pattern" : NAMEPATTERN, "acl" : [ ACLRULE, ... ] }, ... ],
+        "emailConfig" : [
+           { "pattern" : NAMEPATTERN, "acl" : [ ACLRULE, ... ] }, ... ],
+        "project" : [
+           { "pattern" : NAMEPATTERN, "acl" : [ ACLRULE, ... ] }, ... ],
+        "plugin" : [
+           { "pattern" : NAMEPATTERN, "acl" : [ ACLRULE, ... ] }, ... ],
+        "repository" : [
+           { "pattern" : NAMEPATTERN, "acl" : [ ACLRULE, ... ] }, ... ],
+        "resource" : [
+           { "pattern" : NAMEPATTERN, "acl" : [ ACLRULE, ... ] }, ... ],
+        "workspace" : [
+           { "pattern" : NAMEPATTERN, "acl" : [ ACLRULE, ... ] }, ... ] } 
+....
+
+TEAM is
+
+....
+      { "roles" : { ROLENAME : ROLE, ... },
+        "project" : [ PROJECTNAME, ... ],
+        "resource" : [ RESOURCENAME, ... ],
+        "workspace" : [ WORKSPACENAME, ... ]} 
+....
+
+ROLE is
+
+....
+      { "group" : GROUPNAME,
+        "create" : [ CREATETYPE, ... ] } 
+....
+
+ACLRULE is one of:
+
+....
+      { "group" : GROUPNAME, "access" : ACCESS }
+      { "user" : USERNAME, "access" : ACCESS }
+      { "project" : PROJECTNAME, "access" : ACCESS }
+      { "role" : ROLENAME, "access" : ACCESS }
+....
+
+ACCESS is
+
+....
+      [ READPERM, MODIFYPERM, EXECUTEPERM, CHANGEPERM ] 
+....
+
+*PERM is one of:
+
+....
+      "allow", "deny", "inherit" 
+....
+
+OBJECTNAME is one of
+
+....
+        "server", "admin", "artifacts", "directory", "emailConfigs", "log",
+        "licensing", "plugins", "priority", "projects", "repositories",
+        "resources", "session", "test", "workspaces" 
+....
+
+CREATETYPE is one of
+
+....
+        "artifact", "project", "resource", "workspace"
+         
+....
+
+GROUPNAME is a string containing the name of a group
+
+USERNAME is a string containing the name of a user
+
+NAMEPATTERN is a string containing a regular expression for the name of the object to operate on
+
+PROJECTNAME is a string containing the name of a project
+
+PROPERTYPATH is a string containing the path to a property sheet the names of objects being considered for modification
+
+TEAMNAME is a string containing a name for the team
+
+ROLENAME is a string containing a name for the role
+
+RESOURCENAME is a string containing the name of a resource
+
+WORKSPACENAME is a string containing the name of a workspace
+
+== Release notes
+
+=== EC-Security 1.2.5
+
+* The documentation has been migrated to the main documentation site.
+
+=== EC-Security 1.2.4
+
+* Renaming from "CloudBees Flow" to "{CD}".
+
+=== EC-Security 1.2.3
+
+* Renaming from "Electric Cloud" to "CloudBees"
+
+=== EC-Security 1.2.2
+
+* Added metadata that is required for 9.0 release.
+
+=== EC-Security 1.2.1
+
+* Renamed ElectricCommander to ElectricFlow.
